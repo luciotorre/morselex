@@ -1,0 +1,5 @@
+django
+django-extensions
+pytest
+pytest-django
+djangorestframework
