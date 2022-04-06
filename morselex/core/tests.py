@@ -9,6 +9,7 @@ def user():
     user.save()
     return user
 
+
 @pytest.fixture
 def workspace():
     user = models.User.objects.get(username='username')
@@ -16,11 +17,13 @@ def workspace():
     ws.save()
     return ws
 
+
 @pytest.fixture
 def another_user():
     user = models.User.objects.create(username='another_username')
     user.save()
     return user
+
 
 @pytest.mark.django_db
 def test_create_morsel(user, workspace):
@@ -29,7 +32,7 @@ def test_create_morsel(user, workspace):
 
 
 @pytest.mark.django_db
-def test_attributesl(user, workspace):
+def test_attributes(user, workspace):
     m = models.Morsel(author=user, workspace=workspace)
     m.save()
 
@@ -53,3 +56,24 @@ def test_attributesl(user, workspace):
     m.update(values)
 
     assert m.attributes() == values
+
+
+@pytest.mark.django_db
+def test_tags(user, workspace):
+    m = models.Morsel(author=user, workspace=workspace)
+    m.save()
+
+    assert m.all_tags() == []
+
+    m.add_tag("foo")
+    assert m.all_tags() == ['foo']
+
+    m.add_tag("bar")
+    assert sorted(m.all_tags()) == ['bar', 'foo']
+
+    m.remove_tag("foo")
+    assert m.all_tags() == ['bar']
+
+    m.add_tag("baz")
+    m.clear_tags()
+    assert m.all_tags() == []

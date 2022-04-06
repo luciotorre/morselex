@@ -1,12 +1,20 @@
 from django.db import models
-
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 from django_extensions.db.models import TimeStampedModel
 from django.contrib.auth.models import AbstractUser
+
 
 class User(AbstractUser):
 
     def create_workspace(self, name):
         return Workspace(owner=self, name=name)
+
+
+@receiver(post_save, sender=User)
+def create_default_workspace(sender, instance, created=None, **kwargs):
+    if created:
+        instance.create_workspace('home').save()
 
 
 class Member(models.Model):
@@ -30,7 +38,8 @@ class Workspace(TimeStampedModel):
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
 
     name = models.CharField(max_length=100)
-    members = models.ManyToManyField(User,
+    members = models.ManyToManyField(
+        User,
         through=Member,
         through_fields=('workspace', 'user'),
         related_name='workspaces'
@@ -46,18 +55,24 @@ class Morsel(TimeStampedModel):
 
     text = models.TextField()
 
-    tags = models.ManyToManyField('Tag',
+    tags = models.ManyToManyField(
+        'Tag',
         through='Tagging',
         through_fields=('morsel', 'tag'),
         related_name='morsels',
     )
 
-    edges_from = models.ManyToManyField('Morsel',
+    edges_from = models.ManyToManyField(
+        'Morsel',
         through='Edge',
         through_fields=('source', 'dest'),
         symmetrical=True,
     )
 
+    # All these helper functions, maybe they should not exist.
+    # Maybe I should just get used to the django model api.
+    # Materializing query sets is nice but leads to OOMs.
+    # Who would have more than 640 tags?
     def __getitem__(self, key):
         try:
             return self.attribute_set.get(label=key).value
@@ -69,7 +84,7 @@ class Morsel(TimeStampedModel):
         attr.save()
 
     def keys(self):
-        return [attr.label for attr in self.attribute_set.all()]
+        return list(self.attribute_set.values_list('label', flat=True))
 
     def attributes(self):
         return dict((attr.label, attr.value) for attr in self.attribute_set.all())
@@ -77,6 +92,18 @@ class Morsel(TimeStampedModel):
     def update(self, values):
         for k, v in values.items():
             self[k] = v
+
+    def add_tag(self, tagname):
+        self.tags.create(workspace=self.workspace, name=tagname)
+
+    def remove_tag(self, tagname):
+        self.tags.filter(name=tagname).delete()
+
+    def clear_tags(self):
+        self.tags.all().delete()
+
+    def all_tags(self):
+        return list(self.tags.values_list('name', flat=True))
 
 
 class Attribute(TimeStampedModel):
@@ -88,7 +115,6 @@ class Attribute(TimeStampedModel):
     morsel = models.ForeignKey(Morsel, on_delete=models.CASCADE)
     label = models.CharField(max_length=100)
     value = models.TextField()
-
 
 
 class Blobs(TimeStampedModel):
@@ -111,6 +137,7 @@ class Edge(TimeStampedModel):
     def save(self, *args, **kwargs):
         assert self.source.workspace == self.dest.workspace
         super().save(*args, **kwargs)
+
 
 class Tag(TimeStampedModel):
     workspace = models.ForeignKey(Workspace, on_delete=models.CASCADE)
